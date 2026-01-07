@@ -4,11 +4,22 @@ export async function onRequestPost(context) {
     // 从环境变量中获取 DeepSeek API Key (需要在 CF 面板设置)
     const DEEPSEEK_API_KEY = env.DEEPSEEK_API_KEY;
     
+    // 设置响应头，支持 CORS
+    const corsHeaders = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Content-Type": "application/json"
+    };
+
     try {
         const { code } = await request.json();
 
-        if (!code) {
-            return new Response(JSON.stringify({ error: "No code provided" }), { status: 400 });
+        if (!code || code.trim() === "") {
+            return new Response(JSON.stringify({ error: "No code provided" }), { 
+                status: 400, 
+                headers: corsHeaders 
+            });
         }
 
         // 调用 DeepSeek API
@@ -19,11 +30,11 @@ export async function onRequestPost(context) {
                 "Authorization": `Bearer ${DEEPSEEK_API_KEY}`
             },
             body: JSON.stringify({
-                model: "deepseek-chat", // 使用 V3 模型，速度快，适合格式化
+                model: "deepseek-chat", // 使用 V3 模型，性价比最高
                 messages: [
                     { 
                         role: "system", 
-                        content: "你是一个专业的编程工具。请将用户提供的代码进行格式化。要求：1. 修正缩进和换行。2. 修正基础语法错误。3. 保持逻辑严谨。4. 仅输出格式化后的纯代码，不要任何解释。不要加Markdown标记。" 
+                        content: "You are a code formatting expert. Please format the provided code. Rules: 1. Fix indentation and line breaks. 2. Fix minor syntax errors. 3. Maintain logic. 4. Output ONLY the formatted code. DO NOT include any explanations or Markdown code block markers (like ```)." 
                     },
                     { role: "user", content: code }
                 ],
@@ -31,14 +42,22 @@ export async function onRequestPost(context) {
             })
         });
 
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`DeepSeek API error: ${response.status} - ${errorBody}`);
+        }
+
         const result = await response.json();
         const formattedCode = result.choices[0].message.content;
 
         return new Response(JSON.stringify({ result: formattedCode }), {
-            headers: { "Content-Type": "application/json" }
+            headers: corsHeaders
         });
 
     } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+        return new Response(JSON.stringify({ error: error.message }), { 
+            status: 500, 
+            headers: corsHeaders 
+        });
     }
 }
